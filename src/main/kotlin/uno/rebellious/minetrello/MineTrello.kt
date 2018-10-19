@@ -2,10 +2,9 @@ package uno.rebellious.minetrello
 
 import net.minecraftforge.fml.common.Mod
 import net.minecraftforge.fml.common.SidedProxy
-import net.minecraftforge.fml.common.event.FMLInitializationEvent
-import net.minecraftforge.fml.common.event.FMLPostInitializationEvent
-import net.minecraftforge.fml.common.event.FMLPreInitializationEvent
+import net.minecraftforge.fml.common.event.*
 import org.apache.logging.log4j.Logger
+import uno.rebellious.minetrello.commands.ListBoardCommand
 import uno.rebellious.minetrello.proxy.CommonProxy
 
 
@@ -46,5 +45,10 @@ object MineTrello {
     @Mod.EventHandler
     fun init(event: FMLInitializationEvent) {
         proxy?.init(event)
+    }
+
+    @Mod.EventHandler
+    fun serverLoad(event: FMLServerStartingEvent) {
+        event.registerServerCommand(ListBoardCommand())
     }
 }
