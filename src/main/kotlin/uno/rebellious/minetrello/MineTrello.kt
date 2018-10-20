@@ -3,6 +3,8 @@ package uno.rebellious.minetrello
 import net.minecraftforge.fml.common.Mod
 import net.minecraftforge.fml.common.SidedProxy
 import net.minecraftforge.fml.common.event.*
+import net.minecraftforge.fml.common.network.NetworkRegistry
+import net.minecraftforge.fml.relauncher.Side
 import org.apache.logging.log4j.Logger
 import uno.rebellious.minetrello.commands.ListBoardCommand
 import uno.rebellious.minetrello.proxy.CommonProxy
@@ -21,6 +23,8 @@ object MineTrello {
 
     @Mod.Instance
     var instance: MineTrello? = null
+
+    val networkInstance = NetworkRegistry.INSTANCE.getChannel("channel", Side.SERVER)
 
     @SidedProxy(
             clientSide = "uno.rebellious.minetrello.proxy.ClientProxy",
