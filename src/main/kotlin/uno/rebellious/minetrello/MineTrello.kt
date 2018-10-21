@@ -2,7 +2,10 @@ package uno.rebellious.minetrello
 
 import net.minecraftforge.fml.common.Mod
 import net.minecraftforge.fml.common.SidedProxy
-import net.minecraftforge.fml.common.event.*
+import net.minecraftforge.fml.common.event.FMLInitializationEvent
+import net.minecraftforge.fml.common.event.FMLPostInitializationEvent
+import net.minecraftforge.fml.common.event.FMLPreInitializationEvent
+import net.minecraftforge.fml.common.event.FMLServerStartingEvent
 import net.minecraftforge.fml.common.network.NetworkRegistry
 import net.minecraftforge.fml.relauncher.Side
 import org.apache.logging.log4j.Logger
@@ -23,6 +26,8 @@ object MineTrello {
 
     @Mod.Instance
     var instance: MineTrello? = null
+
+    var boardHandler: BoardHandler? = null
 
     val networkInstance = NetworkRegistry.INSTANCE.getChannel("channel", Side.SERVER)
 
@@ -54,5 +59,6 @@ object MineTrello {
     @Mod.EventHandler
     fun serverLoad(event: FMLServerStartingEvent) {
         event.registerServerCommand(ListBoardCommand())
+        boardHandler = BoardHandler()
     }
 }

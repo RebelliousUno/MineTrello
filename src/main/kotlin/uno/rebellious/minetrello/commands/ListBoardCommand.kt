@@ -1,26 +1,12 @@
 package uno.rebellious.minetrello.commands
 
-import com.github.kittinunf.result.success
-import com.jayway.jsonpath.internal.function.numeric.Min
-import net.minecraft.client.Minecraft
 import net.minecraft.command.ICommand
 import net.minecraft.command.ICommandSender
-import net.minecraft.network.NetworkManager
 import net.minecraft.server.MinecraftServer
 import net.minecraft.tileentity.TileEntitySign
 import net.minecraft.util.math.BlockPos
-import net.minecraft.util.text.TextComponentString
-import net.minecraft.world.WorldServer
-import net.minecraftforge.fml.common.event.FMLInterModComms
-import net.minecraftforge.fml.common.network.ByteBufUtils
-import net.minecraftforge.fml.common.network.handshake.NetworkDispatcher
-import net.minecraftforge.fml.common.network.internal.FMLNetworkHandler
-import net.minecraftforge.fml.common.network.simpleimpl.IMessage
-import net.minecraftforge.fml.server.FMLServerHandler
 import org.apache.logging.log4j.Level
 import uno.rebellious.minetrello.MineTrello
-import uno.rebellious.minetrello.TileEntityBoardSign
-import uno.rebellious.minetrello.dao.Board
 import uno.rebellious.minetrello.dao.TrelloDAOImpl
 
 class ListBoardCommand: ICommand {
@@ -88,12 +74,21 @@ class ListBoardCommand: ICommand {
             .onEach { MineTrello.logger?.log(Level.INFO, "!${it.signText[0].unformattedComponentText}!") }
             .firstOrNull { it.signText[0].unformattedComponentText.trim().equals("trello", true) }
         if (trelloSign != null) {
-            trelloSign.signText[0] = TextComponentString("Hey")
-            trelloSign.markDirty()
-            val packet = trelloSign.updatePacket
-            server.playerList.players.forEach {
-                it.connection.sendPacket(packet)
-            }
+            val boardId = trelloSign.signText[1].unformattedText
+            MineTrello.boardHandler?.findBoardFromSign(trelloSign.pos, sender.entityWorld)
+            TrelloDAOImpl()
+                .getBoardForId(boardId)
+                .subscribe { board ->
+                    MineTrello.logger?.log(Level.INFO, board.name)
+                    MineTrello.logger?.log(Level.INFO, board.desc)
+                }
+
+//            trelloSign.signText[0] = TextComponentString("Hey")
+//            trelloSign.markDirty()
+//            val packet = trelloSign.updatePacket
+//            server.playerList.players.forEach {
+//                it.connection.sendPacket(packet)
+//            }
         } else MineTrello.logger?.log(Level.INFO, "Entity Not Found")
 
 

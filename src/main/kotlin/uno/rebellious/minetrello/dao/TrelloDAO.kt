@@ -8,4 +8,5 @@ import io.reactivex.Single
 
 interface TrelloDAO {
     fun getBoards(): Single<Pair<Response, Result<String, FuelError>>>
+    fun getBoardForId(id: String): Single<Board>
 }

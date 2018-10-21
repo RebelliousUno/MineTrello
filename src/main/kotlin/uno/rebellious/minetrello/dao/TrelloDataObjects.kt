@@ -9,4 +9,6 @@ class Board(val json: String) {
     val name: String
         get() = context.read("$.name")
 
+    val desc: String
+        get() = context.read("$.desc")
 }
