@@ -1,11 +1,19 @@
 package uno.rebellious.minetrello
 
 import io.reactivex.Observable
+import net.minecraft.block.Block
+import net.minecraft.block.BlockSign
+import net.minecraft.block.BlockWallSign
 import net.minecraft.init.Blocks
+import net.minecraft.tileentity.TileEntity
+import net.minecraft.tileentity.TileEntitySign
 import net.minecraft.util.EnumFacing
+import net.minecraft.util.Rotation
 import net.minecraft.util.math.BlockPos
+import net.minecraft.util.text.TextComponentString
 import net.minecraft.world.World
 import org.apache.logging.log4j.Level
+import uno.rebellious.minetrello.dao.Board
 import java.util.concurrent.TimeUnit
 
 class BoardHandler {
@@ -28,11 +36,22 @@ class BoardHandler {
     }
 
     private fun isValidBoard(
+                             position1: BlockPos,
+                             position2: BlockPos,
+                             position3: BlockPos,
+                             position4: BlockPos,
+                             world: World): Boolean {
+        val validBlocks = listOf(Blocks.STONE, Blocks.REDSTONE_BLOCK)
+        return isValidBoard(position1, position2, position3, position4, world, validBlocks)
+    }
+
+    private fun isValidBoard(
         position1: BlockPos,
         position2: BlockPos,
         position3: BlockPos,
         position4: BlockPos,
-        world: World
+        world: World,
+        validBlocks: List<Block>
     ): Boolean {
         val minX = listOf(position1.x, position2.x, position3.x, position4.x).min()!!
         val maxX= listOf(position1.x, position2.x, position3.x, position4.x).max()!!
@@ -40,7 +59,6 @@ class BoardHandler {
         val maxY= listOf(position1.y, position2.y, position3.y, position4.y).max()!!
         val minZ= listOf(position1.z, position2.z, position3.z, position4.z).min()!!
         val maxZ= listOf(position1.z, position2.z, position3.z, position4.z).max()!!
-        val validBlocks = listOf(Blocks.STONE, Blocks.REDSTONE_BLOCK)
         (minX..maxX).forEach {x ->
             (minY..maxY).forEach {y->
                 (minZ..maxZ).forEach {z ->
@@ -96,36 +114,77 @@ class BoardHandler {
         }
     }
 
-    fun findBoardFromSign(signPos: BlockPos, world: World) {
+    fun findFrontFacing(corners: List<BlockPos>, world: World): EnumFacing {
+        //work on axis of board...
+        val validBlocks = listOf(Blocks.AIR, Blocks.WALL_SIGN)
+        if (corners.size != 4) return EnumFacing.DOWN
+        if (corners[0].x == corners[1].x && corners[1].x == corners[2].x && corners[2].x == corners[3].x) {
+            //Is along the Z axis (North +ve Z South -ve Z)
+            MineTrello.logger?.log(Level.INFO, "On X Axis")
+            listOf(EnumFacing.EAST, EnumFacing.WEST)
+                .forEach {
+                    if (isValidBoard(corners[0].offset(it), corners[1].offset(it), corners[2].offset(it), corners[3].offset(it), world, validBlocks)) return it
+                }
+        } else {
+            //is Along the X axis (East +ve x, West -ve X)
+            MineTrello.logger?.log(Level.INFO, "On Z Axis")
+            listOf(EnumFacing.NORTH, EnumFacing.SOUTH)
+                .forEach {
+                    if (isValidBoard(corners[0].offset(it), corners[1].offset(it), corners[2].offset(it), corners[3].offset(it), world, validBlocks)) return it
+                }
+        }
+        return EnumFacing.DOWN // Down for negative board
+    }
+
+    fun findBoardFromSign(signPos: BlockPos, world: World, boardId: String): TrelloBoard? {
         //Check if Sign already exists
         val sign = boards.firstOrNull { it.signPos.equals(signPos) }
         if (sign == null) {
-            // Sign Not currently existing as a board
-
-            var signNeighbours = EnumFacing.HORIZONTALS
+            val signNeighbours = EnumFacing.HORIZONTALS
             signNeighbours
-                .filter {
-                    world.getBlockState(signPos.offset(it)).block.equals(Blocks.REDSTONE_BLOCK) //Is the block in that facing a redstone block
-                }
+                .filter { world.getBlockState(signPos.offset(it)).block.equals(Blocks.REDSTONE_BLOCK) }
                 .map { Pair(it, isValidBoard(signPos.offset(it), world, it)) }
                 .forEach {
-                    //Corners of the board
-                    if (isValidBoard(it.second.second, world))
-                        MineTrello.logger?.log(Level.INFO, it.second)
-                    else
-                        MineTrello.logger?.log(Level.INFO, "Not a Valid Board :(")
+                    val blockList = it.second.second.filterNotNull()
+                    if (blockList.size == 4 && isValidBoard(blockList, world)) {
+                        val frontFacing = findFrontFacing(blockList, world)
+                        if (frontFacing != EnumFacing.DOWN) {
+                            val trello = TrelloBoard(signPos, blockList, frontFacing, boardId, world)
+                            boards.add(trello)
+                            return trello
+                        }
+                    }
                 }
         } else {
-            //Sign already exists as a board
-            //Verify it is still a valid board
+            if (isValidBoard(sign.trelloBoard, world) && findFrontFacing(sign.trelloBoard, world) == sign.facing) return sign
         }
-        //Check around sign for Redstone block
-
+        return null
     }
 }
+//World might be bad...might be better to do dimension?
+class TrelloBoard(val signPos: BlockPos, val trelloBoard: List<BlockPos>, val facing: EnumFacing, val boardId: String, val world: World) {
+    private var _name = ""
+    var name: String
+        get() = _name
+        set(value) {
+            _name = value
+            updateTitle()
+        }
 
-class TrelloBoard(val signPos: BlockPos, val trelloBoard: Pair<BlockPos, BlockPos>, val boardId: String) {
 
+    private fun updateTitle() {
+        val maxY = trelloBoard.asSequence().map { it.y }.max()!!
+        val minX = trelloBoard.asSequence().map { it.x }.min()!!
+        val maxX = trelloBoard.asSequence().map { it.x }.max()!!
+        val middleX = (maxX +  minX) / 2
+        val minZ = trelloBoard.asSequence().map { it.z }.min()!!
+        val maxZ = trelloBoard.asSequence().map { it.z }.max()!!
+        val middleZ = (maxZ + minZ) / 2
+
+        val titlePos = BlockPos(middleX, maxY, middleZ).offset(facing)
+        world.setBlockState(titlePos, Blocks.WALL_SIGN.defaultState.withProperty(BlockWallSign.FACING, facing))
+        (world.getTileEntity(titlePos) as TileEntitySign).signText[0] = TextComponentString(_name)
+    }
 
 
     fun updateTrelloBoard() {

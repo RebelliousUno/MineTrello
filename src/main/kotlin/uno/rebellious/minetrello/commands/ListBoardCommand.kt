@@ -75,10 +75,11 @@ class ListBoardCommand: ICommand {
             .firstOrNull { it.signText[0].unformattedComponentText.trim().equals("trello", true) }
         if (trelloSign != null) {
             val boardId = trelloSign.signText[1].unformattedText
-            MineTrello.boardHandler?.findBoardFromSign(trelloSign.pos, sender.entityWorld)
+            val trelloBoard = MineTrello.boardHandler?.findBoardFromSign(trelloSign.pos, sender.entityWorld, boardId)
             TrelloDAOImpl()
                 .getBoardForId(boardId)
                 .subscribe { board ->
+                    trelloBoard?.name = board.name
                     MineTrello.logger?.log(Level.INFO, board.name)
                     MineTrello.logger?.log(Level.INFO, board.desc)
                 }
