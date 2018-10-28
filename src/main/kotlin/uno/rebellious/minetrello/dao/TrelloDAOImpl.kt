@@ -11,24 +11,38 @@ import uno.rebellious.minetrello.MineTrello
 import uno.rebellious.minetrello.config.GeneralConfig
 
 class TrelloDAOImpl : TrelloDAO {
+    val baseURL = "https://api.trello.com/1"
+    val keyTokenParams = listOf(Pair("key",GeneralConfig.configData?.apiKey), Pair("token",GeneralConfig.configData?.token))
+
+
+    override fun getListsForBoardId(boardId: String): Single<TrelloList> {
+        val uri = "${baseURL}/boards/$boardId/lists"
+        return Fuel.get(uri, keyTokenParams).rx_responseString()
+            .map {
+                TrelloList(it.second.get())
+            }
+    }
 
     override fun getBoardForId(id: String): Single<Board> {
-        val uri = "https://api.trello.com/1/boards/$id?key=${GeneralConfig.configData?.apiKey}&token=${GeneralConfig.configData?.token}"
-        MineTrello.logger?.log(Level.INFO, uri)
-        return Fuel.get(uri).rx_responseString()
+        val uri = "${baseURL}/boards/$id"
+        return Fuel.get(uri, keyTokenParams).rx_responseString()
             .map {
                 Board(it.second.get())
             }
     }
 
+    override fun getCardsForListId(listId: String): Single<CardList> {
+        val uri = "$baseURL/lists/$listId/cards"
+        return Fuel.get(uri, keyTokenParams).rx_responseString()
+            .map{
+                CardList(it.second.get())
+            }
+    }
 
     override fun getBoards(): Single<Pair<Response, Result<String, FuelError>>> {
         val uri = "https://api.trello.com/1/boards/${GeneralConfig.configData?.boardId}?key=${GeneralConfig.configData?.apiKey}&token=${GeneralConfig.configData?.token}"
         return Fuel.get(uri).rx_responseString()
-//        return ObservableHttp.createGet(uri, client).toObservable()
-//            .flatMap { response ->
-//                response.content.map {bytes ->
-//                    String(bytes)
-//                } }
     }
+
+
 }

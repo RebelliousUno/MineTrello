@@ -1,33 +1,38 @@
 package uno.rebellious.minetrello
 
 import io.reactivex.Observable
+import io.reactivex.disposables.Disposable
 import net.minecraft.block.Block
-import net.minecraft.block.BlockSign
 import net.minecraft.block.BlockWallSign
 import net.minecraft.init.Blocks
-import net.minecraft.tileentity.TileEntity
 import net.minecraft.tileentity.TileEntitySign
 import net.minecraft.util.EnumFacing
-import net.minecraft.util.Rotation
 import net.minecraft.util.math.BlockPos
 import net.minecraft.util.text.TextComponentString
+import net.minecraft.util.text.TextFormatting
 import net.minecraft.world.World
 import org.apache.logging.log4j.Level
-import uno.rebellious.minetrello.dao.Board
+import uno.rebellious.minetrello.dao.TrelloDAOImpl
+import java.lang.StringBuilder
 import java.util.concurrent.TimeUnit
+import kotlin.math.max
 
 class BoardHandler {
-    val ticker = Observable.interval(1, TimeUnit.MINUTES)
+    val ticker = Observable.interval(10, TimeUnit.SECONDS)
     var boards = ArrayList<TrelloBoard>()
+    private val tickerSubscription: Disposable
 
     init {
-        ticker.subscribe {
+        tickerSubscription = ticker.subscribe {
             updateBoards()
         }
     }
 
     fun updateBoards() {
         MineTrello.logger?.log(Level.INFO, "Update Boards")
+        boards.forEach {
+            it.updateTrelloBoard()
+        }
     }
 
     fun isValidBoard(board: List<BlockPos?>, world: World): Boolean {
@@ -160,6 +165,10 @@ class BoardHandler {
         }
         return null
     }
+
+    fun disposeOfTimer() {
+        if (!tickerSubscription.isDisposed) tickerSubscription.dispose()
+    }
 }
 //World might be bad...might be better to do dimension?
 class TrelloBoard(val signPos: BlockPos, val trelloBoard: List<BlockPos>, val facing: EnumFacing, val boardId: String, val world: World) {
@@ -168,26 +177,120 @@ class TrelloBoard(val signPos: BlockPos, val trelloBoard: List<BlockPos>, val fa
         get() = _name
         set(value) {
             _name = value
-            updateTitle()
         }
 
+    private val signPositions = HashSet<BlockPos>()
+
+    private val maxY: Int = trelloBoard.asSequence().map { it.y }.max()!!
+    private val minY: Int = trelloBoard.asSequence().map { it.y }.min()!!
+    private val minX: Int = trelloBoard.asSequence().map { it.x }.min()!!
+    private val maxX = trelloBoard.asSequence().map { it.x }.max()!!
+    private val minZ = trelloBoard.asSequence().map { it.z }.min()!!
+    private val maxZ = trelloBoard.asSequence().map { it.z }.max()!!
 
     private fun updateTitle() {
-        val maxY = trelloBoard.asSequence().map { it.y }.max()!!
-        val minX = trelloBoard.asSequence().map { it.x }.min()!!
-        val maxX = trelloBoard.asSequence().map { it.x }.max()!!
         val middleX = (maxX +  minX) / 2
-        val minZ = trelloBoard.asSequence().map { it.z }.min()!!
-        val maxZ = trelloBoard.asSequence().map { it.z }.max()!!
         val middleZ = (maxZ + minZ) / 2
-
         val titlePos = BlockPos(middleX, maxY, middleZ).offset(facing)
-        world.setBlockState(titlePos, Blocks.WALL_SIGN.defaultState.withProperty(BlockWallSign.FACING, facing))
-        (world.getTileEntity(titlePos) as TileEntitySign).signText[0] = TextComponentString(_name)
+        placeSignAt(titlePos, breakStringToLines(_name, 15))
+    }
+
+    private fun placeSignAt(position: BlockPos, signText: List<String>) {
+        signPositions.add(position)
+        world.setBlockState(position, Blocks.WALL_SIGN.defaultState.withProperty(BlockWallSign.FACING, facing))
+
+        val tile = (world.getTileEntity(position) as TileEntitySign)
+        signText
+            .filterIndexed { index, _ -> index < 4 }
+            .forEachIndexed { index, text -> tile.signText[index] = TextComponentString(text) }
+
+        //(world.getTileEntity(position) as TileEntitySign).signText[0].style.color = TextFormatting.BLUE
+    }
+
+    private fun placeCardsForList(listId: String, xPos: Int, zPos: Int) {
+        TrelloDAOImpl().getCardsForListId(listId).subscribe { cards ->
+            cards.cards.forEachIndexed { index, name ->
+                val yPos = maxY - 2 - index
+                if (yPos>= minY) placeSignAt(BlockPos(xPos, yPos, zPos).offset(facing), breakStringToLines(name, 15))
+            }
+        }
+    }
+
+    private fun breakStringToLines(line: String, maxLenth: Int): List<String> {
+        val splitLine = line.split(" ")
+        val result = mutableListOf(StringBuilder(), StringBuilder(), StringBuilder(), StringBuilder())
+        var listLine = 0
+        splitLine.forEach {
+            if ((result[listLine].length + it.length + 1 ) > maxLenth) listLine++ //account for the space
+            if (listLine < 4) {
+                result[listLine].append(" ").append(it)
+            }
+        }
+        return result.map { it.trim() }.map { it.toString() }
     }
 
 
+    private fun placeSignsForLists(lists: List<Pair<String,String>>) {
+        if (lists.isEmpty()) return
+        val listHeight = maxY - 1 //List titles 1 lower than the title
+        val boardWidth = max(maxX-minX, maxZ-minZ) // if the board is on that axis max-min will be 0
+        val spacing = max(1, boardWidth / lists.size) // Make sure this is at least 1 (This is left Aligned)
+        lists.forEachIndexed { index, list ->
+            val listName = list.second
+            val listId = list.first
+            val xPos: Int
+            val zPos: Int
+            val offsetPos = (index * spacing)
+            when (facing) {
+                EnumFacing.EAST -> {
+                    xPos = minX
+                    zPos = maxZ - offsetPos
+                }
+                EnumFacing.WEST -> {
+                    xPos = minX
+                    zPos = minZ + offsetPos
+                }
+                EnumFacing.NORTH -> {
+                    xPos = maxX - offsetPos
+                    zPos = minZ
+                }
+                EnumFacing.SOUTH -> {
+                    xPos = minX + offsetPos
+                    zPos = minZ
+                }
+                else -> {
+                    xPos = minX
+                    zPos = minZ
+                }
+            }
+            MineTrello.logger?.log(Level.INFO, "Spacing is $spacing")
+            placeCardsForList(listId, xPos, zPos)
+            placeSignAt(BlockPos(xPos, listHeight, zPos).offset(facing), breakStringToLines(listName, 15))
+        }
+
+    }
+
+    private fun updateLists() {
+        TrelloDAOImpl()
+            .getListsForBoardId(boardId)
+            .subscribe { lists ->
+                MineTrello.logger?.log(Level.INFO, lists.listIds)
+                placeSignsForLists(lists.listIds)
+        }
+    }
+
+    private fun clearBoard() {
+        MineTrello.logger?.log(Level.INFO, "Clear Board")
+        signPositions.forEach {
+            world.setBlockToAir(it)
+        }
+        signPositions.clear()
+    }
+
     fun updateTrelloBoard() {
+        clearBoard()
+        updateTitle()
+        updateLists()
         //Get the trello data
         //Update signs on the board
 

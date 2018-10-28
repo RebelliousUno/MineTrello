@@ -9,4 +9,6 @@ import io.reactivex.Single
 interface TrelloDAO {
     fun getBoards(): Single<Pair<Response, Result<String, FuelError>>>
     fun getBoardForId(id: String): Single<Board>
+    fun getListsForBoardId(boardId: String): Single<TrelloList>
+    fun getCardsForListId(listId: String): Single<CardList>
 }
