@@ -207,8 +207,10 @@ class TrelloBoard(val signPos: BlockPos, val trelloBoard: List<BlockPos>, val fa
                 .filterIndexed { index, _ -> index < 4 }
                 .forEachIndexed { index, text -> tile.signText[index] = TextComponentString(text) }
         }
-        (world.getTileEntity(position) as? TileEntitySign)?.signText?.get(0)?.style?.underlined = isTitle
-        (world.getTileEntity(position) as? TileEntitySign)?.signText?.get(0)?.style?.bold = isTitle
+        (world.getTileEntity(position) as? TileEntitySign)?.signText?.forEach {
+            it.style.underlined = isTitle
+            it.style.bold = isTitle
+        }
     }
 
     private fun placeCardsForList(
@@ -302,7 +304,7 @@ class TrelloBoard(val signPos: BlockPos, val trelloBoard: List<BlockPos>, val fa
             }
             placeCardsForList(listId, xPos, zPos, facing, spacing)
             val signPos = BlockPos(xPos, listHeight, zPos).offset(facing)
-            placeSignAt(signPos, breakStringToLines(listName, 15))
+            placeSignAt(signPos, breakStringToLines(listName, 15), true)
         }
     }
 
