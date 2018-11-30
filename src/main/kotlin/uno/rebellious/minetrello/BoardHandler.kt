@@ -9,7 +9,6 @@ import net.minecraft.tileentity.TileEntitySign
 import net.minecraft.util.EnumFacing
 import net.minecraft.util.math.BlockPos
 import net.minecraft.util.text.TextComponentString
-import net.minecraft.util.text.TextFormatting
 import net.minecraft.world.World
 import org.apache.logging.log4j.Level
 import uno.rebellious.minetrello.dao.TrelloDAOImpl
@@ -180,6 +179,7 @@ class TrelloBoard(val signPos: BlockPos, val trelloBoard: List<BlockPos>, val fa
         }
 
     private val signPositions = HashSet<BlockPos>()
+    private val oldPositions = HashSet<BlockPos>()
 
     private val maxY: Int = trelloBoard.asSequence().map { it.y }.max()!!
     private val minY: Int = trelloBoard.asSequence().map { it.y }.min()!!
@@ -192,26 +192,63 @@ class TrelloBoard(val signPos: BlockPos, val trelloBoard: List<BlockPos>, val fa
         val middleX = (maxX +  minX) / 2
         val middleZ = (maxZ + minZ) / 2
         val titlePos = BlockPos(middleX, maxY, middleZ).offset(facing)
-        placeSignAt(titlePos, breakStringToLines(_name, 15))
+        placeSignAt(titlePos, breakStringToLines(_name, 15), true)
     }
 
-    private fun placeSignAt(position: BlockPos, signText: List<String>) {
+    private fun placeSignAt(position: BlockPos, signText: List<String>, isTitle: Boolean = false) {
         signPositions.add(position)
-        world.setBlockState(position, Blocks.WALL_SIGN.defaultState.withProperty(BlockWallSign.FACING, facing))
+        if (!oldPositions.contains(position))
+            world.setBlockState(position, Blocks.WALL_SIGN.defaultState.withProperty(BlockWallSign.FACING, facing))
 
-        val tile = (world.getTileEntity(position) as TileEntitySign)
-        signText
-            .filterIndexed { index, _ -> index < 4 }
-            .forEachIndexed { index, text -> tile.signText[index] = TextComponentString(text) }
-
-        //(world.getTileEntity(position) as TileEntitySign).signText[0].style.color = TextFormatting.BLUE
+        val tile = (world.getTileEntity(position) as? TileEntitySign)
+        if (tile == null) signPositions.remove(position)
+        else {
+            signText
+                .filterIndexed { index, _ -> index < 4 }
+                .forEachIndexed { index, text -> tile.signText[index] = TextComponentString(text) }
+        }
+        (world.getTileEntity(position) as? TileEntitySign)?.signText?.get(0)?.style?.underlined = isTitle
+        (world.getTileEntity(position) as? TileEntitySign)?.signText?.get(0)?.style?.bold = isTitle
     }
 
-    private fun placeCardsForList(listId: String, xPos: Int, zPos: Int) {
+    private fun placeCardsForList(
+        listId: String,
+        xPos: Int,
+        zPos: Int,
+        facing: EnumFacing,
+        spacing: Int
+    ) {
+        var xPos = xPos
+        var zPos = zPos
+
+        var column = 0
+        val listHeight = maxY - 1 - minY
         TrelloDAOImpl().getCardsForListId(listId).subscribe { cards ->
             cards.cards.forEachIndexed { index, name ->
-                val yPos = maxY - 2 - index
-                if (yPos>= minY) placeSignAt(BlockPos(xPos, yPos, zPos).offset(facing), breakStringToLines(name, 15))
+                val yPos = (maxY - 2 - index) + (listHeight * column)
+                MineTrello.logger?.info("maxY: $maxY, index: $index, listHeight: $listHeight, column: $column, yPos: $yPos, sign: $name")
+                if (yPos>= minY) placeSignAt(BlockPos(xPos, yPos, zPos).offset(this.facing), breakStringToLines(name, 15))
+                else {
+                    column++
+                    val newYpos = (maxY - 2 - index) + (listHeight * column)
+                    when (facing) {
+                        EnumFacing.EAST -> {
+                            zPos --
+                        }
+                        EnumFacing.WEST -> {
+                            zPos ++
+                        }
+                        EnumFacing.NORTH -> {
+                            xPos --
+                        }
+                        EnumFacing.SOUTH -> {
+                            xPos ++
+                        }
+                        else -> {
+                        }
+                    }
+                    placeSignAt(BlockPos(xPos, newYpos, zPos).offset(this.facing), breakStringToLines(name, 15))
+                }
             }
         }
     }
@@ -263,11 +300,10 @@ class TrelloBoard(val signPos: BlockPos, val trelloBoard: List<BlockPos>, val fa
                     zPos = minZ
                 }
             }
-            MineTrello.logger?.log(Level.INFO, "Spacing is $spacing")
-            placeCardsForList(listId, xPos, zPos)
-            placeSignAt(BlockPos(xPos, listHeight, zPos).offset(facing), breakStringToLines(listName, 15))
+            placeCardsForList(listId, xPos, zPos, facing, spacing)
+            val signPos = BlockPos(xPos, listHeight, zPos).offset(facing)
+            placeSignAt(signPos, breakStringToLines(listName, 15))
         }
-
     }
 
     private fun updateLists() {
@@ -280,17 +316,20 @@ class TrelloBoard(val signPos: BlockPos, val trelloBoard: List<BlockPos>, val fa
     }
 
     private fun clearBoard() {
-        MineTrello.logger?.log(Level.INFO, "Clear Board")
-        signPositions.forEach {
+        oldPositions.removeAll(signPositions)
+
+        oldPositions.forEach {
             world.setBlockToAir(it)
         }
+        oldPositions.clear()
+        oldPositions.addAll(signPositions)
         signPositions.clear()
     }
 
     fun updateTrelloBoard() {
-        clearBoard()
         updateTitle()
         updateLists()
+        clearBoard()
         //Get the trello data
         //Update signs on the board
 
