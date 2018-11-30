@@ -10,6 +10,7 @@ import net.minecraft.util.EnumFacing
 import net.minecraft.util.math.BlockPos
 import net.minecraft.util.text.TextComponentString
 import net.minecraft.world.World
+import net.minecraft.world.gen.structure.StructureBoundingBox
 import org.apache.logging.log4j.Level
 import uno.rebellious.minetrello.dao.TrelloDAOImpl
 import java.lang.StringBuilder
@@ -28,9 +29,13 @@ class BoardHandler {
     }
 
     fun updateBoards() {
-        MineTrello.logger?.log(Level.INFO, "Update Boards")
         boards.forEach {
-            it.updateTrelloBoard()
+            if (it.world.isAreaLoaded(it.boardArea)) {
+                MineTrello.logger?.info("Board Loaded Updating")
+                it.updateTrelloBoard()
+            }
+            else MineTrello.logger?.info("Board Not Loaded Not Updating")
+
         }
     }
 
@@ -188,6 +193,7 @@ class TrelloBoard(val signPos: BlockPos, val trelloBoard: List<BlockPos>, val fa
     private val minZ = trelloBoard.asSequence().map { it.z }.min()!!
     private val maxZ = trelloBoard.asSequence().map { it.z }.max()!!
 
+    val boardArea = StructureBoundingBox(minX, minY, minZ, maxX, maxY, maxZ)
     private fun updateTitle() {
         val middleX = (maxX +  minX) / 2
         val middleZ = (maxZ + minZ) / 2
@@ -228,7 +234,6 @@ class TrelloBoard(val signPos: BlockPos, val trelloBoard: List<BlockPos>, val fa
         TrelloDAOImpl().getCardsForListId(listId).subscribe { cards ->
             cards.cards.forEachIndexed { index, name ->
                 val yPos = (maxY - 2 - index) + (listHeight * column)
-                MineTrello.logger?.info("maxY: $maxY, index: $index, listHeight: $listHeight, column: $column, yPos: $yPos, sign: $name")
                 if (yPos>= minY) placeSignAt(BlockPos(xPos, yPos, zPos).offset(this.facing), breakStringToLines(name, 15))
                 else {
                     column++
@@ -329,6 +334,7 @@ class TrelloBoard(val signPos: BlockPos, val trelloBoard: List<BlockPos>, val fa
     }
 
     fun updateTrelloBoard() {
+        signPos
         updateTitle()
         updateLists()
         clearBoard()
