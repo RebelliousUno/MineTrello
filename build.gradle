@@ -58,7 +58,7 @@ reobf {
 tasks.build.dependsOn reobfShadowJar
 
 dependencies {
-    compile 'com.jayway.jsonpath:json-path:2.7.0'
+    compile 'com.jayway.jsonpath:json-path:2.9.0'
     compile group: "net.shadowfacts", name: "Forgelin", version: "1.8.4"
     compile "org.jetbrains.kotlin:kotlin-stdlib-jdk8:$kotlin_version"
     compile "com.github.kittinunf.fuel:fuel:$fuel_version"
